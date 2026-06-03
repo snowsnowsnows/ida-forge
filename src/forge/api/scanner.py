@@ -538,12 +538,14 @@ class ScanVisitor(ObjectVisitor):
                 parsed_assignee = self._parse_left_assignee(assignment_parent.x, offset)
                 if parsed_assignee is not None:
                     _assignee, assignee_offset = parsed_assignee
+                    obj_ea = self._extract_obj_ea(getattr(assignment_parent, "y", None))
                     log_debug("assignment to object")
                     return self._get_member(
                         assignee_offset,
                         cexpr,
                         obj,
                         assignment_parent.x.type,
+                        obj_ea,
                     )
 
         has_explicit_tinfo = False
@@ -654,11 +656,13 @@ class ScanVisitor(ObjectVisitor):
         :param cexpr: The cexpr from which to extract the effective address.
         :return: The effective address of the object if found, otherwise None.
         """
-        # If the cexpr is a reference, get its content.
-        if cexpr.op == ctype.ref:
+        while cexpr is not None and hasattr(cexpr, "op") and cexpr.op in (
+            getattr(ctype, "cast", None),
+            getattr(ctype, "ref", None),
+        ):
             cexpr = cexpr.x
-        # If the cexpr is an object, return its effective address.
-        if cexpr.op == ctype.obj:
+
+        if cexpr is not None and cexpr.op == ctype.obj:
             if cexpr.obj_ea != idaapi.BADADDR:
                 return cexpr.obj_ea
 

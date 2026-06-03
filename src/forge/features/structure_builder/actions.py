@@ -35,8 +35,8 @@ class StructureBuilderAction(HexRaysPopupAction):
 
     @staticmethod
     def _prepare_function(cfunc: ida_hexrays.cfunc_t) -> ida_hexrays.cfunc_t:
-        from forge.api.visitor import refresh_function_tree_postorder
-        return refresh_function_tree_postorder(cfunc) or cfunc
+        from forge.api.visitor import refresh_function_tree
+        return refresh_function_tree(cfunc) or cfunc
 
     @staticmethod
     def _provenance_kind_for_object(obj: ScanObject) -> str:

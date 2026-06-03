@@ -72,6 +72,58 @@ def test_recursive_downwards_object_visitor_skips_invalid_callee_ordinal(monkeyp
     assert prepared_calls == []
 
 
+def test_recursive_downwards_check_call_only_tracks_matched_argument(monkeypatch):
+    visitor_module = _load_visitor_module()
+    visitor = visitor_module.RecursiveDownwardsObjectVisitor.__new__(
+        visitor_module.RecursiveDownwardsObjectVisitor
+    )
+    visitor._cfunc = SimpleNamespace(entry_ea=0x401000)
+    visitor._objects = [SimpleNamespace(name="tracked")]
+    visitor.parents = SimpleNamespace(size=lambda: 1)
+    call_expr = SimpleNamespace(
+        op=visitor_module.ctype.call,
+        x=SimpleNamespace(obj_ea=0x402000),
+    )
+    matched_expr = SimpleNamespace(name="tracked")
+    other_expr = SimpleNamespace(name="other")
+    recorded_visits = []
+    recorded_tree_edges = []
+    argument_queries = []
+
+    monkeypatch.setattr(visitor, "parent_expr", lambda: call_expr, raising=False)
+    monkeypatch.setattr(
+        visitor,
+        "_matches_object",
+        lambda _obj, cexpr: cexpr is matched_expr,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        visitor_module,
+        "get_func_argument_info",
+        lambda call, arg: argument_queries.append((call, arg)) or (0, None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        visitor,
+        "_add_visit",
+        lambda func_ea, arg_idx: recorded_visits.append((func_ea, arg_idx)) or True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        visitor,
+        "_add_scan_tree_info",
+        lambda func_ea, arg_idx: recorded_tree_edges.append((func_ea, arg_idx)),
+        raising=False,
+    )
+
+    visitor._check_call(other_expr)
+    visitor._check_call(matched_expr)
+
+    assert argument_queries == [(call_expr, matched_expr)]
+    assert recorded_visits == [(0x402000, 0)]
+    assert recorded_tree_edges == [(0x402000, 0)]
+
+
 def test_recursive_downwards_object_visitor_leave_expr_checks_calls(monkeypatch):
     visitor_module = _load_visitor_module()
     visitor = visitor_module.RecursiveDownwardsObjectVisitor.__new__(
@@ -322,7 +374,7 @@ def test_recursive_downwards_object_visitor_refreshes_tree_before_scanning(monke
         return None
 
     monkeypatch.setattr(visitor_module, "decompile", fake_decompile)
-    monkeypatch.setattr(visitor_module, "refresh_function_tree_postorder", fake_refresh)
+    monkeypatch.setattr(visitor_module, "refresh_function_tree", fake_refresh)
     monkeypatch.setattr(
         visitor_module,
         "get_argument",
@@ -343,6 +395,30 @@ def test_recursive_downwards_object_visitor_refreshes_tree_before_scanning(monke
     assert (0x402000, 0, "arg0") in prepared_calls
     assert refresh_calls[0] == 0x401000
     assert 0x402000 in refresh_calls
+
+
+def test_refresh_function_tree_decompiles_only_target_function(monkeypatch):
+    visitor_module = _load_visitor_module()
+    decompiled = []
+    dirtied = []
+
+    monkeypatch.setattr(visitor_module, "is_imported", lambda _ea: False)
+    monkeypatch.setattr(
+        visitor_module,
+        "_mark_cfunc_dirty",
+        lambda ea: dirtied.append(ea),
+    )
+    monkeypatch.setattr(
+        visitor_module,
+        "decompile",
+        lambda ea: decompiled.append(ea) or SimpleNamespace(entry_ea=ea),
+    )
+
+    result = visitor_module.refresh_function_tree(SimpleNamespace(entry_ea=0x401000))
+
+    assert result.entry_ea == 0x401000
+    assert dirtied == [0x401000]
+    assert decompiled == [0x401000]
 
 
 def test_recursive_downwards_object_visitor_init_sets_downwards_state(monkeypatch):

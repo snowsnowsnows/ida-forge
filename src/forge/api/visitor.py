@@ -451,6 +451,8 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
         else:
             return
 
+        if not any(self._matches_object(obj, cexpr) for obj in self._objects):
+            return
         idx, _ = get_func_argument_info(call_cexpr, arg_cexpr)
         if idx is None:
             return
@@ -465,10 +467,9 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
             self._check_call(cexpr)
         return super().leave_expr(cexpr)
 
-
     def _refresh_decompilation_tree(self, cfunc: ida_hexrays.cfunc_t | None = None) -> ida_hexrays.cfunc_t | None:
         target_cfunc = cfunc or self._cfunc
-        refreshed = refresh_function_tree_postorder(target_cfunc)
+        refreshed = refresh_function_tree(target_cfunc)
         if refreshed is not None:
             return refreshed
         return target_cfunc
@@ -694,59 +695,12 @@ def _mark_cfunc_dirty(ea: int) -> None:
         dirty(ea, False)
 
 
-def refresh_function_tree_postorder(
+def refresh_function_tree(
     cfunc: ida_hexrays.cfunc_t,
 ) -> ida_hexrays.cfunc_t | None:
-    visited: set[int] = set()
+    func_ea = cfunc.entry_ea
+    if is_imported(func_ea):
+        return cfunc
 
-    def _touch(func_ea: int) -> ida_hexrays.cfunc_t | None:
-        if is_imported(func_ea):
-            return None
-
-        _mark_cfunc_dirty(func_ea)
-        current = decompile(func_ea)
-        if current is None:
-            return None
-
-        if func_ea in visited:
-            return current
-        visited.add(func_ea)
-
-        seen_callees: set[int] = set()
-        while True:
-            body = getattr(current, "body", None)
-            if body is None:
-                return current
-
-            collector = FunctionTouchVisitor(current)
-            apply_to = getattr(collector, "apply_to", None)
-            if callable(apply_to):
-                try:
-                    apply_to(body, None)
-                except AttributeError:
-                    pass
-            else:
-                collector.visit_expr(body)
-
-            callees = sorted(
-                callee_ea
-                for callee_ea in getattr(collector, "_functions", set())
-                if callee_ea not in seen_callees and not is_imported(callee_ea)
-            )
-            if not callees:
-                break
-
-            for callee_ea in callees:
-                _touch(callee_ea)
-                seen_callees.add(callee_ea)
-
-            _mark_cfunc_dirty(func_ea)
-            refreshed = decompile(func_ea)
-            if refreshed is None:
-                return current
-            current = refreshed
-
-        return current
-
-    refreshed = _touch(cfunc.entry_ea)
-    return refreshed or cfunc
+    _mark_cfunc_dirty(func_ea)
+    return decompile(func_ea) or cfunc

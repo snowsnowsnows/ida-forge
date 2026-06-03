@@ -257,6 +257,100 @@ def test_extract_member_recognizes_cast_pointer_assignment_on_left_hand_side():
     assert captured["tinfo"].dstr() == "u64 **"
 
 
+def test_extract_member_passes_assignment_source_object_address():
+    scanner_module = _load_scanner_module()
+    visitor = scanner_module.ScanVisitor.__new__(scanner_module.ScanVisitor)
+    scanner_module.ctype = SimpleNamespace(
+        cast=1,
+        ref=2,
+        ptr=3,
+        idx=3,
+        add=4,
+        num=5,
+        asg=6,
+        var=7,
+        obj=8,
+    )
+
+    captured = {}
+
+    def fake_get_member(offset, cexpr, obj, tinfo, obj_ea=None):
+        captured["offset"] = offset
+        captured["tinfo"] = tinfo
+        captured["obj_ea"] = obj_ea
+        return "member"
+
+    visitor._get_member = fake_get_member
+
+    leaf = SimpleNamespace(
+        op=scanner_module.ctype.var,
+        type=SimpleNamespace(dstr=lambda: "void *"),
+    )
+    cast = SimpleNamespace(
+        op=scanner_module.ctype.cast,
+        x=leaf,
+        type=SimpleNamespace(dstr=lambda: "u64 *"),
+    )
+    ptr = SimpleNamespace(
+        op=scanner_module.ctype.ptr,
+        x=cast,
+        type=SimpleNamespace(dstr=lambda: "u64 **"),
+    )
+    vtable_obj = SimpleNamespace(op=scanner_module.ctype.obj, obj_ea=0x5000)
+    ref = SimpleNamespace(op=scanner_module.ctype.ref, x=vtable_obj)
+    rhs_cast = SimpleNamespace(op=scanner_module.ctype.cast, x=ref)
+    asg = SimpleNamespace(op=scanner_module.ctype.asg, x=ptr, y=rhs_cast)
+
+    context = scanner_module.ParentExpressionContext([cast, ptr, asg])
+    result = visitor._extract_member(leaf, SimpleNamespace(name="this"), 0, context)
+
+    assert result == "member"
+    assert captured["offset"] == 0
+    assert captured["tinfo"] is ptr.type
+    assert captured["obj_ea"] == 0x5000
+
+
+def test_get_member_creates_virtual_table_from_assignment_source(monkeypatch):
+    scanner_module = _load_scanner_module()
+    visitor = scanner_module.ScanVisitor.__new__(scanner_module.ScanVisitor)
+
+    class FakeVirtualTable:
+        def __init__(self, offset, address, scanned_variable=None, origin=None):
+            self.offset = offset
+            self.address = address
+            self.scanned_variable = scanned_variable
+            self.origin = origin
+
+        @staticmethod
+        def is_virtual_table(address):
+            return 3 if address == 0x5000 else 0
+
+    import forge.api.members as members_module
+    monkeypatch.setattr(members_module, "VirtualTable", FakeVirtualTable, raising=False)
+    monkeypatch.setattr(
+        scanner_module.ScannedObject,
+        "create",
+        lambda obj, ea, origin, applicable: SimpleNamespace(
+            obj=obj,
+            ea=ea,
+            origin=origin,
+            applicable=applicable,
+        ),
+    )
+
+    visitor._origin = 0x10
+    visitor.parents = []
+    visitor.crippled = False
+    obj = SimpleNamespace(id=scanner_module.ObjectType.local_variable, name="this")
+
+    member = visitor._get_member(0, SimpleNamespace(ea=0x401234), obj, None, 0x5000)
+
+    assert isinstance(member, FakeVirtualTable)
+    assert member.offset == 0
+    assert member.address == 0x5000
+    assert member.origin == 0x10
+
+
 def test_get_member_preserves_negative_offset(monkeypatch):
     scanner_module = _load_scanner_module()
     visitor = scanner_module.ScanVisitor.__new__(scanner_module.ScanVisitor)

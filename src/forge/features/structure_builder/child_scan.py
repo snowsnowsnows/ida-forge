@@ -107,9 +107,9 @@ class ChildScanMixin:
             log_warning(f"Failed to decompile function at {hex(func_ea)}", True)
             return None
 
-        from forge.api.visitor import refresh_function_tree_postorder
+        from forge.api.visitor import refresh_function_tree
 
-        return refresh_function_tree_postorder(cfunc) or cfunc
+        return refresh_function_tree(cfunc) or cfunc
 
     @staticmethod
     def _resolve_scan_variable_target(
