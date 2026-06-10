@@ -745,13 +745,14 @@ class VirtualTable(AbstractMember):
         assert (
             demangled_name
         ), "Virtual table must have either a legal C++ type name or a mangled name"
-        name = (
-            demangled_name_to_c_str(demangled_name)
+        normalized_name = (
+            demangled_name
             .replace("const_", "")
             .replace("const ", "")
             .replace("::_vftable", "_vtbl")
             .replace("::`vftable'", "_vtbl")
         )
+        name = demangled_name_to_c_str(normalized_name)
 
         return name, True
 

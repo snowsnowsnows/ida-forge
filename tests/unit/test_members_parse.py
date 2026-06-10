@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from forge.api import members
+from forge.util.cxx_to_c_name import demangled_name_to_c_str
 
 
 def test_normalize_type_declaration_rewrites_known_aliases():
@@ -118,3 +119,42 @@ def test_parse_user_tinfo_returns_none_when_all_strategies_fail(monkeypatch):
 def test_normalize_type_declaration_does_not_replace_partial_identifier_matches():
     assert members.normalize_type_declaration("BYTECODE") == "BYTECODE"
     assert members.normalize_type_declaration("myDWORDValue") == "myDWORDValue"
+
+
+def test_demangled_name_to_c_str_removes_template_and_quote_symbols():
+    assert (
+        demangled_name_to_c_str("fixture::Interface<std::vector<int> >::_vftable")
+        == "fixture_Interface_std_vector_int_vftable"
+    )
+    assert demangled_name_to_c_str("std::less<int>::operator()") == "std_less_int_operator_call"
+
+
+def test_parse_vtable_name_sanitizes_demangled_vtable_symbols(monkeypatch):
+    vtable = members.VirtualTable.__new__(members.VirtualTable)
+    vtable.address = 0x5000
+
+    monkeypatch.setattr(
+        members.ida_name,
+        "get_name",
+        lambda _ea: "??_7?$Interface@H@@6B@",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        members.ida_name,
+        "is_valid_typename",
+        lambda _name: False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        members.ida_name,
+        "demangle_name",
+        lambda _name, _flags: "fixture::Interface<std::vector<int> >::`vftable'",
+        raising=False,
+    )
+    monkeypatch.setattr(members.idc, "get_inf_attr", lambda _attr: 0, raising=False)
+    monkeypatch.setattr(members.idc, "INF_SHORT_DN", 0, raising=False)
+
+    name, nice = vtable._parse_vtable_name()
+
+    assert nice is True
+    assert name == "fixture_Interface_std_vector_int_vtbl"
