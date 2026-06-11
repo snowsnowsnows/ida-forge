@@ -57,6 +57,8 @@ def test_recursive_downwards_object_visitor_skips_invalid_callee_ordinal(monkeyp
         visitor_module.RecursiveDownwardsObjectVisitor
     )
     visitor._cfunc = SimpleNamespace(entry_ea=0x401000)
+    visitor._max_depth = None
+    visitor._current_depth = 0
     visitor._new_for_visit = {(0x402000, 0)}
     monkeypatch.setattr(visitor_module.RecursiveObjectVisitor, "_recursive_process", lambda self: None)
     monkeypatch.setattr(
@@ -270,6 +272,8 @@ def test_recursive_downwards_object_visitor_retries_deferred_child_arguments(mon
         visitor_module.RecursiveDownwardsObjectVisitor
     )
     visitor._cfunc = SimpleNamespace(entry_ea=0x401000)
+    visitor._max_depth = None
+    visitor._current_depth = 0
     visitor._new_for_visit = {(0x402000, 0), (0x403000, 0)}
 
     prepared_calls = []
@@ -340,6 +344,8 @@ def test_recursive_downwards_object_visitor_refreshes_tree_before_scanning(monke
         visitor_module.RecursiveDownwardsObjectVisitor
     )
     visitor._cfunc = SimpleNamespace(entry_ea=0x401000)
+    visitor._max_depth = None
+    visitor._current_depth = 0
     visitor._new_for_visit = {(0x402000, 0)}
 
     prepared_calls = []

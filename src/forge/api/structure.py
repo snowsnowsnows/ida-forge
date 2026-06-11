@@ -641,7 +641,7 @@ class Structure:
             )
             return None
 
-        ida_typeinf.del_named_type(ida_typeinf.get_idati(), structure_name)
+        ida_typeinf.del_named_type(ida_typeinf.get_idati(), structure_name, 0)
         if not forge_types.create_type(structure_name, cdecl):
             log_error(f"Failed to recreate type {structure_name}", True)
             return None
