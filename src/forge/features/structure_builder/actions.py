@@ -163,7 +163,7 @@ class DeepScanAction(StructureBuilderAction):
     def _prompt_scan_depth() -> int | None:
         default = config.get_class_config(type(config)).get("default_deep_scan_depth", 3)
         result = ida_kernwin.ask_str(
-            str(default), ida_kernwin.HIST_IDENT,
+            str(default), ida_kernwin.HIST_TYPE,
             "Max recursion depth (0 = current function only, empty = unlimited):",
         )
         if result is None:

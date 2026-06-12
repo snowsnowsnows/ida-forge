@@ -434,9 +434,24 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
         self._rescan_current_function = False
         self._recurse_calls = recurse_calls
         self._max_depth = max_depth
-        self._current_depth = 0
 
 
+
+    def _expression_references_object(self, cexpr) -> bool:
+        work = [cexpr]
+        while work:
+            expr = work.pop()
+            if expr is None:
+                continue
+            if any(self._matches_object(obj, expr) for obj in self._objects):
+                return True
+            op = getattr(expr, "op", None)
+            if op in (ctype.cast, ctype.ref, ctype.ptr):
+                work.append(getattr(expr, "x", None))
+            elif op in (ctype.add, ctype.sub, ctype.idx):
+                work.append(getattr(expr, "x", None))
+                work.append(getattr(expr, "y", None))
+        return False
 
     def _check_call(self, cexpr: ida_hexrays.cexpr_t):
         parent: ida_hexrays.cexpr_t | None = self.parent_expr()
@@ -454,7 +469,7 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
         else:
             return
 
-        if not any(self._matches_object(obj, cexpr) for obj in self._objects):
+        if not self._expression_references_object(cexpr):
             return
         idx, _ = get_func_argument_info(call_cexpr, arg_cexpr)
         if idx is None:
@@ -477,13 +492,8 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
             return refreshed
         return target_cfunc
 
-    def _recursive_process(self):
+    def _scan_single_function(self):
         self._cfunc = self._refresh_decompilation_tree(self._cfunc)
-
-        # Walk the current function's ctree; if assignments expand the tracked
-        # object set (_rescan_current_function), re-walk to pick up the new
-        # aliases.  Bound the loop to avoid spinning when cfunc mutations keep
-        # producing fresh objects with distinct identity_keys.
         MAX_RESCANS = 10
         for _ in range(MAX_RESCANS):
             self._rescan_current_function = False
@@ -492,12 +502,14 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
                 break
             self._cfunc = self._refresh_decompilation_tree(self._cfunc)
 
+    def _recursive_process(self):
+        self._scan_single_function()
+
         pending_visits = list(self._new_for_visit)
         self._new_for_visit.clear()
         deferred_visits: list[tuple[int, int]] = []
 
-        # Skip cross-function recursion when the depth limit is reached.
-        if self._max_depth is not None and self._current_depth >= self._max_depth:
+        if self._max_depth is not None and self._max_depth <= 0:
             pending_visits.clear()
 
         while pending_visits:
@@ -525,9 +537,11 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
             saved_init_obj = getattr(self, "_init_obj", None)
 
             self.prepare_new_scan(cfunc, lvar_idx, obj)
-            self._current_depth += 1
-            self._recursive_process()
-            self._current_depth -= 1
+            self._scan_single_function()
+
+            if self._new_for_visit:
+                pending_visits.extend(self._new_for_visit)
+                self._new_for_visit.clear()
 
             self._cfunc = saved_cfunc
             self._arg_index = saved_arg_index
@@ -535,22 +549,10 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
             self._skip = saved_skip
             self._init_obj = saved_init_obj
 
-
-            # Collect any new callees the recursive scan discovered.
-            if self._new_for_visit:
-                pending_visits.extend(self._new_for_visit)
-                self._new_for_visit.clear()
-
-            # When pending drains, promote deferred items for one more attempt.
-            # If none of them resolve, the deferred loop below handles them
-            # with a proper progress gate.
             if not pending_visits and deferred_visits:
                 pending_visits = deferred_visits
                 deferred_visits = []
 
-        # Deferred items whose arg_idx was out of range may become resolvable
-        # after type propagation from earlier callee scans.  Retry in rounds
-        # with a progress gate to guarantee termination.
         while deferred_visits:
             next_round: list[tuple[int, int]] = []
             progressed = False
@@ -577,9 +579,11 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
                 saved_init_obj = getattr(self, "_init_obj", None)
 
                 self.prepare_new_scan(cfunc, lvar_idx, obj)
-                self._current_depth += 1
-                self._recursive_process()
-                self._current_depth -= 1
+                self._scan_single_function()
+
+                if self._new_for_visit:
+                    pending_visits.extend(self._new_for_visit)
+                    self._new_for_visit.clear()
 
                 self._cfunc = saved_cfunc
                 self._arg_index = saved_arg_index
@@ -587,11 +591,6 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
                 self._skip = saved_skip
                 self._init_obj = saved_init_obj
 
-
-
-                if self._new_for_visit:
-                    pending_visits.extend(self._new_for_visit)
-                    self._new_for_visit.clear()
                 progressed = True
 
             if not progressed or not next_round:
