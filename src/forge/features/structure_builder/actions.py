@@ -155,22 +155,23 @@ class DeepScanAction(StructureBuilderAction):
                 origin,
                 self._clone_global_object(obj),
                 structure_form.current_structure,
+                recurse_calls=True,
                 max_depth=max_depth,
             )
             visitor.process()
 
     @staticmethod
     def _prompt_scan_depth() -> int | None:
-        default = config.get_class_config(type(config)).get("default_deep_scan_depth", 3)
+        default = config.get_class_config(type(config)).get("default_deep_scan_depth", 0)
         result = ida_kernwin.ask_str(
             str(default), ida_kernwin.HIST_TYPE,
-            "Max recursion depth (0 = current function only, empty = unlimited):",
+            "Scan depth (0 = unlimited):",
         )
         if result is None:
-            return None  # cancelled
+            return None
         result = result.strip()
         if not result:
-            return -1  # sentinel for unlimited
+            return 0
         try:
             return int(result)
         except ValueError:
@@ -183,7 +184,7 @@ class DeepScanAction(StructureBuilderAction):
         depth = self._prompt_scan_depth()
         if depth is None:
             return
-        max_depth = None if depth < 0 else depth
+        max_depth = None if depth <= 0 else depth
 
         hx_view = ida_hexrays.get_widget_vdui(ctx.widget)
         cfunc = hx_view.cfunc
@@ -203,6 +204,7 @@ class DeepScanAction(StructureBuilderAction):
                     hx_view.refresh_view(True)
                 visitor = NewDeepScanVisitor(
                     prepared_cfunc, origin, obj, structure_form.current_structure,
+                    recurse_calls=True,
                     max_depth=max_depth,
                 )
                 visitor.process()

@@ -613,7 +613,16 @@ class Structure:
 
         ptr_tinfo = ida_typeinf.tinfo_t()
         ptr_tinfo.create_ptr(tinfo)
+
+        seen_targets: set[tuple] = set()
         for scan_object in self.get_unique_scanned_variables(origin):
+            target_key = (
+                getattr(scan_object, "func_ea", None),
+                getattr(scan_object, "name", None),
+            )
+            if target_key in seen_targets:
+                continue
+            seen_targets.add(target_key)
             scan_object.apply_type(ptr_tinfo)
         return tinfo
 

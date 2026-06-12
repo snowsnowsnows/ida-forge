@@ -500,7 +500,6 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
             super()._recursive_process()
             if not self._rescan_current_function:
                 break
-            self._cfunc = self._refresh_decompilation_tree(self._cfunc)
 
     def _recursive_process(self):
         self._scan_single_function()
@@ -509,8 +508,6 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
         self._new_for_visit.clear()
         deferred_visits: list[tuple[int, int]] = []
 
-        if self._max_depth is not None and self._max_depth <= 0:
-            pending_visits.clear()
 
         while pending_visits:
             func_ea, arg_idx = pending_visits.pop()
