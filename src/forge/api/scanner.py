@@ -279,6 +279,7 @@ class ScanVisitor(ObjectVisitor):
             RecursiveDownwardsObjectVisitor.__init__(self, cfunc, obj, None, True, None, recurse_calls=recurse_calls)
 
         self._origin = origin
+        self._callee_base_offset = 0
         self._structure = structure
 
 
@@ -411,11 +412,11 @@ class ScanVisitor(ObjectVisitor):
         obj_ea: Optional[int] = None,
     ):
         """Build a structure member from the expression/type context."""
+        offset += self._callee_base_offset
         expr_ea = find_expr_address(cexpr, self.parents)
 
         if offset < 0:
-            log_warning(f"Negative offset encountered: {offset}, obj: {to_hex(expr_ea)}")
-
+            return None
 
         applicable = not self.crippled
         scan_obj = ScannedObject.create(obj, expr_ea, self._origin, applicable)

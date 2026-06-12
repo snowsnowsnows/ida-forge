@@ -4,6 +4,7 @@ from forge.api import members
 from forge.util.cxx_to_c_name import demangled_name_to_c_str
 
 
+
 def test_normalize_type_declaration_rewrites_known_aliases():
     assert members.normalize_type_declaration("_DWORD *") == "u32 *"
     assert members.normalize_type_declaration("unsigned __int64") == "u64"
@@ -213,3 +214,21 @@ def test_virtual_function_name_returns_generated_for_sub_prefix(monkeypatch):
     monkeypatch.setattr(members.ida_name, "is_valid_typename", lambda _name: True, raising=False)
 
     assert vf.name == "TestVtbl_function_2"
+
+
+def test_virtual_function_try_rename_to_is_conservative(monkeypatch):
+    vf = _make_vfunc(address=0x1000)
+    renamed = []
+    monkeypatch.setattr(members.ida_funcs, "get_func_name", lambda _ea: "sub_1000", raising=False)
+    monkeypatch.setattr(members.ida_name, "get_name_ea", lambda *_args: members.idaapi.BADADDR, raising=False)
+    monkeypatch.setattr(members.ida_name, "set_name", lambda ea, name: renamed.append((ea, name)) or True, raising=False)
+
+    assert vf.try_rename_to("Derived_slot_0") is True
+    assert renamed == [(0x1000, "Derived_slot_0")]
+
+    monkeypatch.setattr(members.ida_funcs, "get_func_name", lambda _ea: "UserNamed", raising=False)
+    assert vf.try_rename_to("Derived_slot_1") is False
+
+    monkeypatch.setattr(members.ida_funcs, "get_func_name", lambda _ea: "sub_1000", raising=False)
+    monkeypatch.setattr(members.ida_name, "get_name_ea", lambda *_args: 0x2000, raising=False)
+    assert vf.try_rename_to("Collision") is False

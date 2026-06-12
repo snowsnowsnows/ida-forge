@@ -60,6 +60,7 @@ def test_recursive_downwards_object_visitor_skips_invalid_callee_ordinal(monkeyp
     visitor._max_depth = None
     visitor._current_depth = 0
     visitor._new_for_visit = {(0x402000, 0)}
+    visitor._visit_base_offsets = {}
     monkeypatch.setattr(visitor_module.RecursiveObjectVisitor, "_recursive_process", lambda self: None)
     monkeypatch.setattr(
         visitor_module,
@@ -82,6 +83,7 @@ def test_recursive_downwards_check_call_only_tracks_matched_argument(monkeypatch
     visitor._cfunc = SimpleNamespace(entry_ea=0x401000)
     visitor._objects = [SimpleNamespace(name="tracked")]
     visitor.parents = SimpleNamespace(size=lambda: 1)
+    visitor._visit_base_offsets = {}
     call_expr = SimpleNamespace(
         op=visitor_module.ctype.call,
         x=SimpleNamespace(obj_ea=0x402000),
@@ -133,12 +135,13 @@ def test_recursive_downwards_check_call_follows_offset_expression(monkeypatch):
     visitor._cfunc = SimpleNamespace(entry_ea=0x401000)
     visitor._objects = [SimpleNamespace(name="a1")]
     visitor.parents = SimpleNamespace(size=lambda: 1)
+    visitor._visit_base_offsets = {}
     call_expr = SimpleNamespace(
         op=visitor_module.ctype.call,
         x=SimpleNamespace(obj_ea=0x402000),
     )
     a1_var = SimpleNamespace(op=visitor_module.ctype.var, name="a1")
-    offset_num = SimpleNamespace(op=visitor_module.ctype.num, name="12")
+    offset_num = SimpleNamespace(op=visitor_module.ctype.num, name="12", numval=lambda: 12)
     add_expr = SimpleNamespace(op=visitor_module.ctype.add, x=a1_var, y=offset_num)
     unrelated_expr = SimpleNamespace(op=visitor_module.ctype.var, name="other")
     recorded_visits = []
@@ -173,6 +176,77 @@ def test_recursive_downwards_check_call_follows_offset_expression(monkeypatch):
     visitor._check_call(add_expr)
 
     assert recorded_visits == [(0x402000, 0)]
+    assert visitor._visit_base_offsets[(0x402000, 0)] == 12
+
+def test_recursive_downwards_check_call_follows_member_address(monkeypatch):
+    visitor_module = _load_visitor_module()
+    visitor = visitor_module.RecursiveDownwardsObjectVisitor.__new__(
+        visitor_module.RecursiveDownwardsObjectVisitor
+    )
+    visitor._cfunc = SimpleNamespace(entry_ea=0x401000)
+    visitor._objects = [SimpleNamespace(name="a1")]
+    visitor.parents = SimpleNamespace(size=lambda: 1)
+    visitor._visit_base_offsets = {}
+    call_expr = SimpleNamespace(
+        op=visitor_module.ctype.call,
+        x=SimpleNamespace(obj_ea=0x402000),
+    )
+    a1_var = SimpleNamespace(op=visitor_module.ctype.var, name="a1")
+    member_expr = SimpleNamespace(op=visitor_module.ctype.memptr, x=a1_var, m=0x33b0)
+    ref_expr = SimpleNamespace(op=visitor_module.ctype.ref, x=member_expr)
+    recorded_visits = []
+
+    monkeypatch.setattr(visitor, "parent_expr", lambda: call_expr, raising=False)
+    monkeypatch.setattr(
+        visitor,
+        "_matches_object",
+        lambda _obj, cexpr: cexpr is a1_var,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        visitor_module,
+        "get_func_argument_info",
+        lambda call, arg: (0, None),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        visitor,
+        "_add_visit",
+        lambda func_ea, arg_idx: recorded_visits.append((func_ea, arg_idx)) or True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        visitor,
+        "_add_scan_tree_info",
+        lambda func_ea, arg_idx: None,
+        raising=False,
+    )
+
+    visitor._check_call(ref_expr)
+
+    assert recorded_visits == [(0x402000, 0)]
+    assert visitor._visit_base_offsets[(0x402000, 0)] == 0x33b0
+
+
+def test_expression_references_object_ignores_bare_member_dereference(monkeypatch):
+    visitor_module = _load_visitor_module()
+    visitor = visitor_module.RecursiveDownwardsObjectVisitor.__new__(
+        visitor_module.RecursiveDownwardsObjectVisitor
+    )
+    visitor._objects = [SimpleNamespace(name="a1")]
+    a1_var = SimpleNamespace(op=visitor_module.ctype.var, name="a1")
+    member_expr = SimpleNamespace(op=visitor_module.ctype.memptr, x=a1_var, m=0x10)
+
+    monkeypatch.setattr(
+        visitor,
+        "_matches_object",
+        lambda _obj, cexpr: cexpr is a1_var,
+        raising=False,
+    )
+
+    assert visitor._expression_references_object(member_expr) is False
+    assert visitor._expression_references_object(a1_var) is True
+
 
 
 def test_recursive_downwards_object_visitor_leave_expr_checks_calls(monkeypatch):
@@ -324,6 +398,8 @@ def test_recursive_downwards_object_visitor_retries_deferred_child_arguments(mon
     visitor._max_depth = None
     visitor._current_depth = 0
     visitor._new_for_visit = {(0x402000, 0), (0x403000, 0)}
+    visitor._visit_base_offsets = {}
+    visitor._callee_base_offset = 0
 
     prepared_calls = []
     monkeypatch.setattr(
@@ -396,6 +472,8 @@ def test_recursive_downwards_object_visitor_refreshes_tree_before_scanning(monke
     visitor._max_depth = None
     visitor._current_depth = 0
     visitor._new_for_visit = {(0x402000, 0)}
+    visitor._visit_base_offsets = {}
+    visitor._callee_base_offset = 0
 
     prepared_calls = []
     refresh_calls = []
