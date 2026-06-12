@@ -418,7 +418,7 @@ class ScanVisitor(ObjectVisitor):
         if offset < 0:
             return None
 
-        applicable = not self.crippled
+        applicable = not self.crippled and self._callee_base_offset == 0
         scan_obj = ScannedObject.create(obj, expr_ea, self._origin, applicable)
 
         if obj_ea is not None:
@@ -540,7 +540,7 @@ class ScanVisitor(ObjectVisitor):
         if asg_index is not None:
             assignment_parent = context.expr_at(asg_index)
             if assignment_parent is not None and getattr(assignment_parent, "x", None) is not None:
-                parsed_assignee = self._parse_left_assignee(assignment_parent.x, offset)
+                parsed_assignee = self._parse_left_assignee(assignment_parent.x, 0)
                 if parsed_assignee is not None:
                     _assignee, assignee_offset = parsed_assignee
                     obj_ea = self._extract_obj_ea(getattr(assignment_parent, "y", None))

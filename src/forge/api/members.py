@@ -526,7 +526,7 @@ class ImportedVirtualFunction(VirtualFunction):
 
 class VirtualTable(AbstractMember):
     def __init__(self, offset, address, scanned_variable=None, origin=None):
-        super().__init__(offset, address, scanned_variable, origin)
+        super().__init__(offset, scanned_variable, origin)
         self.address = address
         self.virtual_functions = []
         self.name = "_vftable" + f"_{hex(self.offset)}" if self.address else ""

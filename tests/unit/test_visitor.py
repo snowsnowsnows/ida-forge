@@ -178,6 +178,46 @@ def test_recursive_downwards_check_call_follows_offset_expression(monkeypatch):
     assert recorded_visits == [(0x402000, 0)]
     assert visitor._visit_base_offsets[(0x402000, 0)] == 12
 
+
+def test_extract_offset_expression_scales_pointer_add_by_element_size():
+    visitor_module = _load_visitor_module()
+    ops = SimpleNamespace(
+        cast=1, ref=2, memref=3, memptr=4, ptr=5, idx=6, add=7, sub=8, num=9
+    )
+    a1_var = SimpleNamespace(op=ops.num + 1, name="a1")
+    qword_num = SimpleNamespace(op=ops.num, numval=lambda: 1)
+    add_node = SimpleNamespace(
+        op=ops.add,
+        x=a1_var,
+        y=qword_num,
+        type=SimpleNamespace(get_ptrarr_objsize=lambda: 8),
+    )
+
+    base, offset = visitor_module._extract_offset_expression(add_node, ctype_ops=ops)
+
+    assert base is a1_var
+    assert offset == 8
+
+
+def test_extract_offset_expression_byte_pointer_add_is_unscaled():
+    visitor_module = _load_visitor_module()
+    ops = SimpleNamespace(
+        cast=1, ref=2, memref=3, memptr=4, ptr=5, idx=6, add=7, sub=8, num=9
+    )
+    a1_var = SimpleNamespace(op=ops.num + 1, name="a1")
+    byte_num = SimpleNamespace(op=ops.num, numval=lambda: 0x38)
+    add_node = SimpleNamespace(
+        op=ops.add,
+        x=a1_var,
+        y=byte_num,
+        type=SimpleNamespace(get_ptrarr_objsize=lambda: 1),
+    )
+
+    base, offset = visitor_module._extract_offset_expression(add_node, ctype_ops=ops)
+
+    assert base is a1_var
+    assert offset == 0x38
+
 def test_recursive_downwards_check_call_follows_member_address(monkeypatch):
     visitor_module = _load_visitor_module()
     visitor = visitor_module.RecursiveDownwardsObjectVisitor.__new__(

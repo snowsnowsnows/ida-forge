@@ -360,6 +360,7 @@ def test_get_member_applies_callee_base_offset(monkeypatch):
         def __init__(self, offset, address, scanned_variable=None, origin=None):
             self.offset = offset
             self.address = address
+            self.scanned_variable = scanned_variable
 
         @staticmethod
         def is_virtual_table(address):
@@ -385,6 +386,7 @@ def test_get_member_applies_callee_base_offset(monkeypatch):
 
     assert isinstance(member, FakeVirtualTable)
     assert member.offset == 8
+    assert member.scanned_variable.applicable is False
 
 
 def test_get_member_discards_negative_offset():
@@ -611,6 +613,41 @@ def test_extract_member_uses_argument_expression_type_without_warning(monkeypatc
     assert captured["offset"] == 0
     assert captured["tinfo"] is first_expr.type
     assert "warning" not in captured
+
+def test_extract_member_does_not_double_count_pointer_assignment_offset(monkeypatch):
+    scanner_module = _load_scanner_module()
+    visitor = scanner_module.ScanVisitor.__new__(scanner_module.ScanVisitor)
+    monkeypatch.setattr(
+        scanner_module,
+        "ctype",
+        SimpleNamespace(cast=1, ptr=2, idx=3, add=4, num=5, asg=6, var=7, obj=8, ref=9),
+    )
+
+    captured = {}
+
+    def fake_get_member(offset, cexpr, obj, tinfo, obj_ea=None):
+        captured["offset"] = offset
+        captured["obj_ea"] = obj_ea
+        return "member"
+
+    visitor._get_member = fake_get_member
+    visitor._describe_tinfo = lambda tinfo: getattr(tinfo, "dstr", lambda: str(tinfo))()
+
+    a1_var = SimpleNamespace(op=scanner_module.ctype.var, name="a1")
+    offset_num = SimpleNamespace(op=scanner_module.ctype.num, numval=lambda: 0x38)
+    add_node = SimpleNamespace(op=scanner_module.ctype.add, x=a1_var, y=offset_num)
+    lhs = SimpleNamespace(op=scanner_module.ctype.ptr, x=add_node, type=SimpleNamespace(dstr=lambda: "void *"))
+    rhs = SimpleNamespace(op=scanner_module.ctype.obj, obj_ea=0x5000)
+    asg_node = SimpleNamespace(op=scanner_module.ctype.asg, x=lhs, y=rhs)
+    ptr_parent = SimpleNamespace(op=scanner_module.ctype.ptr, x=add_node)
+    context = scanner_module.ParentExpressionContext([ptr_parent, asg_node])
+
+    result = visitor._extract_member(a1_var, SimpleNamespace(name="a1"), 0x38, context)
+
+    assert result == "member"
+    assert captured["offset"] == 0x38
+    assert captured["obj_ea"] == 0x5000
+
 
 
 

@@ -161,6 +161,23 @@ def test_parse_vtable_name_sanitizes_demangled_vtable_symbols(monkeypatch):
     assert name == "fixture_Interface_std_vector_int_vtbl"
 
 
+def test_virtual_table_init_wires_origin_and_scanned_variable(monkeypatch):
+    monkeypatch.setattr(
+        members.VirtualTable, "populate_virtual_functions", lambda self: None
+    )
+    monkeypatch.setattr(
+        members.VirtualTable, "_parse_vtable_name", lambda self: ("Cls_vtbl", True)
+    )
+
+    scan_obj = object()
+    vtable = members.VirtualTable(0x38, 0x5000, scan_obj, 0x10)
+
+    assert vtable.offset == 0x38
+    assert vtable.address == 0x5000
+    assert vtable.origin == 0x10
+    assert vtable.scanned_variables == {scan_obj}
+
+
 def _make_vfunc(address=0x1000, offset=16, table_name="TestVtbl"):
     vf = members.VirtualFunction.__new__(members.VirtualFunction)
     vf.address = address
