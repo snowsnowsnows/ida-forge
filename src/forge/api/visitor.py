@@ -446,9 +446,9 @@ class RecursiveDownwardsObjectVisitor(RecursiveObjectVisitor, DownwardsObjectVis
             if any(self._matches_object(obj, expr) for obj in self._objects):
                 return True
             op = getattr(expr, "op", None)
-            if op in (ctype.cast, ctype.ref, ctype.ptr):
+            if op == ctype.cast:
                 work.append(getattr(expr, "x", None))
-            elif op in (ctype.add, ctype.sub, ctype.idx):
+            elif op in (ctype.add, ctype.sub):
                 work.append(getattr(expr, "x", None))
                 work.append(getattr(expr, "y", None))
         return False
