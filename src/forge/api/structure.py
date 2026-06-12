@@ -591,7 +591,7 @@ class Structure:
 
     @staticmethod
     def _extract_type_name(cdecl: str) -> str | None:
-        match = re.search(r"\b(struct|union|enum)\s+([A-Za-z_]\w*)", cdecl)
+        match = re.search(r"\b(struct|union|enum)\s+([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)", cdecl)
         if match:
             return match.group(2)
         return None
